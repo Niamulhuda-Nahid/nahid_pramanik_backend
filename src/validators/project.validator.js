@@ -1,10 +1,5 @@
 const { z } = require("zod");
 
-const imageSchema = z.object({
-  url: z.string().url("Image URL is invalid"),
-  public_id: z.string().min(1, "Public ID is required"),
-});
-
 const projectSchema = z
   .object({
     title: z.string().min(1, "Title is required"),
@@ -15,8 +10,6 @@ const projectSchema = z
     description: z
       .string()
       .min(20, "Description must be at least 20 characters"),
-    thumbnail: imageSchema,
-    banner: imageSchema,
     liveUrl: z.string().url("Live URL is invalid"),
     githubUrl: z.string().url("Github URL is invalid"),
     duration: z.string(),
@@ -26,11 +19,9 @@ const projectSchema = z
     featured: z.boolean(),
     technologies: z.array(z.string()),
     features: z.array(z.string()),
-    gallery: z.array(imageSchema),
   })
   .strict();
 
-// Update schema
 const updateProjectSchema = projectSchema.partial().strict();
 
 module.exports = {
