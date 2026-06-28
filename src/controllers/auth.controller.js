@@ -47,7 +47,7 @@ const login = async (req, res) => {
         email: admin.email,
         role: admin.role,
         name: admin.name,
-      }
+      },
     });
   } catch (error) {
     res.status(500).send({
@@ -57,6 +57,21 @@ const login = async (req, res) => {
   }
 };
 
+const logout = async (req, res) => {
+  try {
+    res.status(200).send({
+      success: true,
+      message: "Logout successful",
+    });
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: error.message || "An error occurred while logging out",
+    });
+  }
+};
+
 module.exports = {
   login,
+  logout,
 };
