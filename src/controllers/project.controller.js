@@ -2,11 +2,30 @@ const { getProjectsCollection } = require("../config/db");
 const { ObjectId } = require("mongodb");
 const generateSlug = require("../utils/generateSlug");
 const deleteFromCloudinary = require("../utils/deleteFromCloudinary");
+const uploadToCloudinary = require("../utils/uploadToCloudinary");
 
 // Post API to add a new project
 const createProject = async (req, res) => {
   try {
     const projectsCollection = getProjectsCollection();
+
+    const thumbnailFile = req.files?.thumbnail?.[0];
+    const bannerFile = req.files?.banner?.[0];
+    const galleryFiles = req.files?.gallery || [];
+
+    const thumbnail = await uploadToCloudinary(
+      thumbnailFile.buffer,
+      "portfolio/projects",
+    );
+    const banner = await uploadToCloudinary(
+      bannerFile.buffer,
+      "portfolio/projects",
+    );
+    const gallery = await Promise.all(
+      galleryFiles.map((file) =>
+        uploadToCloudinary(file.buffer, "portfolio/projects"),
+      ),
+    );
 
     const slug = await generateSlug(
       projectsCollection,
@@ -16,6 +35,9 @@ const createProject = async (req, res) => {
     const project = {
       ...req.validatedBody,
       slug,
+      thumbnail,
+      banner,
+      gallery,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -56,6 +78,40 @@ const getAllProjects = async (req, res) => {
       success: false,
       message:
         error.message || "An error occurred while retrieving the projects",
+    });
+  }
+};
+
+// Get API to retrive only featured projects
+const getFeaturedProjects = async (req, res) => {
+  try {
+    const projectsCollection = getProjectsCollection();
+
+    const result = await projectsCollection
+      .find({ featured: true })
+      .sort({ createdAt: -1 })
+      .toArray();
+    console.log(result);
+
+    if (!result) {
+      return res.status(404).send({
+        success: false,
+        message: "Project not found",
+      });
+    }
+
+    res.send({
+      success: true,
+      message: "Featured projects retrieved successfully",
+      count: result.length,
+      data: result,
+    });
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message:
+        error.message ||
+        "An error occurred while retrieving the featured projects",
     });
   }
 };
@@ -120,39 +176,51 @@ const updateProjectById = async (req, res) => {
       );
     }
 
+    // -----------------------------
     // Thumbnail Replace
-    if (
-      req.validatedBody.thumbnail &&
-      existingProject.thumbnail?.public_id !==
-        req.validatedBody.thumbnail.public_id
-    ) {
-      await deleteFromCloudinary(existingProject.thumbnail?.public_id);
+    //  -----------------------------
+    if (req.files?.thumbnail?.length) {
+      if (existingProject.thumbnail?.public_id) {
+        await deleteFromCloudinary(existingProject.thumbnail?.public_id);
+      }
+      const thumbnail = await uploadToCloudinary(
+        req.files.thumbnail[0].buffer,
+        "portfolio/projects",
+      );
+      updatedProject.thumbnail = thumbnail;
     }
-
+    // -----------------------------
     // Banner Replace
-    if (
-      req.validatedBody.banner &&
-      existingProject.banner?.public_id !== req.validatedBody.banner.public_id
-    ) {
-      await deleteFromCloudinary(existingProject.banner?.public_id);
+    //  -----------------------------
+    if (req.files?.banner?.length) {
+      if (existingProject.banner?.public_id) {
+        await deleteFromCloudinary(existingProject.banner?.public_id);
+      }
+      const banner = await uploadToCloudinary(
+        req.files.banner[0].buffer,
+        "portfolio/projects",
+      );
+      updatedProject.banner = banner;
     }
 
+    // -----------------------------
     // Gallery replace
-    if (req.validatedBody.gallery) {
-      const oldGallery = existingProject?.gallery || [];
-      const newGallery = req.validatedBody.gallery || [];
+    //  -----------------------------
+    if (req.files?.gallery?.length) {
+      if (existingProject.gallery?.length) {
+        await Promise.all(
+          existingProject.gallery.map((image) =>
+            deleteFromCloudinary(image.public_id),
+          ),
+        );
+      }
 
-      const oldIds = oldGallery.map((img) => img.public_id);
-      const newIds = newGallery.map((img) => img.public_id);
-
-      // find remove images
-      const removedImages = oldGallery.filter(
-        (img) => !newIds.includes(img.public_id),
+      const gallery = await Promise.all(
+        req.files.gallery.map((file) =>
+          uploadToCloudinary(file.buffer, "portfolio/projects"),
+        ),
       );
-
-      await Promise.all(
-        removedImages.map((img) => deleteFromCloudinary(img.public_id)),
-      );
+      updatedProject.gallery = gallery;
     }
 
     // MongoDB Update
@@ -174,16 +242,20 @@ const updateProjectById = async (req, res) => {
   }
 };
 
+// ------------------------------------------
 // DELETE API to delete a project by id
+// ------------------------------------------
 const deleteProjectById = async (req, res) => {
   try {
     const projectsCollection = getProjectsCollection();
     const id = req.params.id;
 
     // find the project first
-    const project = await projectsCollection.findOne({ _id: new ObjectId(id) });
+    const existingProject = await projectsCollection.findOne({
+      _id: new ObjectId(id),
+    });
 
-    if (!project) {
+    if (!existingProject) {
       return res.status(404).send({
         success: false,
         message: "Project not found",
@@ -191,19 +263,21 @@ const deleteProjectById = async (req, res) => {
     }
 
     // Delete thumbnail
-    if (project.thumbnail?.public_id) {
-      await deleteFromCloudinary(project.thumbnail.public_id);
+    if (existingProject.thumbnail?.public_id) {
+      await deleteFromCloudinary(existingProject.thumbnail.public_id);
     }
 
     // Delete banner
-    if (project.banner?.public_id) {
-      await deleteFromCloudinary(project.banner.public_id);
+    if (existingProject.banner?.public_id) {
+      await deleteFromCloudinary(existingProject.banner.public_id);
     }
 
     // Delete gallery images
-    if (project.gallery && project.gallery.length > 0) {
+    if (existingProject.gallery?.length > 0) {
       await Promise.all(
-        project.gallery.map((image) => deleteFromCloudinary(image.public_id)),
+        existingProject.gallery.map((image) =>
+          deleteFromCloudinary(image.public_id),
+        ),
       );
     }
 
@@ -231,4 +305,5 @@ module.exports = {
   getProjectBySlug,
   updateProjectById,
   deleteProjectById,
+  getFeaturedProjects,
 };

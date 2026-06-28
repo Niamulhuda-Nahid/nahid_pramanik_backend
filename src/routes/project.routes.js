@@ -19,6 +19,7 @@ const {
   getProjectBySlug,
   updateProjectById,
   deleteProjectById,
+  getFeaturedProjects,
 } = require("../controllers/project.controller");
 
 router.post(
@@ -36,6 +37,7 @@ router.post(
 );
 
 router.get("/", getAllProjects);
+router.get("/featured", getFeaturedProjects);
 
 router.get("/:slug", getProjectBySlug);
 
